@@ -266,6 +266,11 @@ export const ChatApp: React.FC = () => {
                   <div className="mt-2 max-h-40 overflow-y-auto text-sm text-muted-foreground whitespace-pre-wrap">
                     {docText.slice(0, 1200)}{docText.length > 1200 ? "..." : ""}
                   </div>
+                  <div className="mt-3">
+                    <Button variant="outline" size="sm" onClick={() => { setDocText(""); toast({ title: "Document removed" }); }}>
+                      Remove document
+                    </Button>
+                  </div>
                 </details>
               )}
 

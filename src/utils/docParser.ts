@@ -1,9 +1,10 @@
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import mammoth from "mammoth";
 
-// Configure pdf.js worker (use CDN for simplicity in Vite)
-GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.js";
+// Configure pdf.js worker using Vite-served asset to avoid cross-origin/module issues
+// @ts-ignore - Vite ?url returns string
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+GlobalWorkerOptions.workerSrc = workerUrl;
 
 export async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.toLowerCase().split(".").pop();
