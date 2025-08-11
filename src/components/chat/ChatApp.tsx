@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -11,7 +11,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { extractTextFromFile, truncateForPrompt } from "@/utils/docParser";
 import { callGemini } from "@/utils/gemini";
 import { toast } from "@/components/ui/use-toast";
-import { Loader2, Mic, MicOff, Send, Upload, Trash2, Volume2, VolumeX, Settings } from "lucide-react";
+import { Loader2, Mic, MicOff, Send, Upload, Trash2, Settings } from "lucide-react";
 
 export type ChatMessage = { id: string; role: "user" | "assistant"; text: string };
 
@@ -27,7 +27,7 @@ export const ChatApp: React.FC = () => {
   const [messages, setMessages] = useLocalStorage<ChatMessage[]>(STORAGE.CHAT, []);
   const [docText, setDocText] = useLocalStorage<string>(STORAGE.DOC, "");
   const [apiKey, setApiKey] = useLocalStorage<string>(STORAGE.API, "");
-  const [sttEnabled, setSttEnabled] = useLocalStorage<boolean>(STORAGE.STT, true);
+  
   const [ttsEnabled, setTtsEnabled] = useLocalStorage<boolean>(STORAGE.TTS, false);
 
   const [input, setInput] = useState("");
@@ -85,9 +85,8 @@ export const ChatApp: React.FC = () => {
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setVoiceTranscript(transcript);
-        setInput((prev) => (prev ? prev + " " : "") + transcript);
         setVoicePhase("thinking");
-        onSend(true);
+        onSend(true, transcript);
       };
       recognition.onend = () => setListening(false);
       recognition.onerror = () => setListening(false);
@@ -119,8 +118,8 @@ export const ChatApp: React.FC = () => {
     }
   };
 
-  const onSend = async (voiceMode?: boolean) => {
-    const content = input.trim();
+  const onSend = async (voiceMode?: boolean, overrideContent?: string) => {
+    const content = (overrideContent ?? input).trim();
     if (!content) return;
     if (!apiKey) {
       toast({ title: "API key required", description: "Open settings to add your Gemini API key.", });
@@ -191,14 +190,6 @@ export const ChatApp: React.FC = () => {
         <div className="container py-4 flex items-center justify-between">
           <h1 className="text-xl font-semibold">Gemini Chatbot</h1>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="stt">STT</Label>
-              <Switch id="stt" checked={sttEnabled} onCheckedChange={setSttEnabled} />
-            </div>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="tts">TTS</Label>
-              <Switch id="tts" checked={ttsEnabled} onCheckedChange={setTtsEnabled} />
-            </div>
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm"><Settings className="mr-2"/>Settings</Button>
@@ -269,9 +260,8 @@ export const ChatApp: React.FC = () => {
                   <Send />
                 </Button>
                 <Button
-                  variant={sttEnabled ? "secondary" : "outline"}
+                  variant="secondary"
                   onClick={() => {
-                    if (!sttEnabled) return;
                     if (listening) {
                       try { (window as any).speechSynthesis?.cancel?.(); } catch {}
                       setListening(false);
@@ -309,11 +299,6 @@ export const ChatApp: React.FC = () => {
                 </details>
               )}
 
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Volume2 className={ttsEnabled ? "" : "hidden"} />
-                <VolumeX className={ttsEnabled ? "hidden" : ""} />
-                <span>Text-to-Speech is {ttsEnabled ? "enabled" : "disabled"}</span>
-              </div>
             </div>
           </CardContent>
         </Card>
