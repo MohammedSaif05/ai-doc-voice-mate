@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MessageBubble } from "./MessageBubble";
+import { VoiceModal } from "./VoiceModal";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { extractTextFromFile, truncateForPrompt } from "@/utils/docParser";
 import { callGemini } from "@/utils/gemini";
@@ -33,6 +34,12 @@ export const ChatApp: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+
+  // Voice session UI state
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voicePhase, setVoicePhase] = useState<"listening" | "thinking" | "speaking" | "done">("listening");
+  const [voiceTranscript, setVoiceTranscript] = useState<string>("");
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
 
   // SEO
   useEffect(() => {
@@ -77,11 +84,16 @@ export const ChatApp: React.FC = () => {
       recognition.continuous = false;
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
+        setVoiceTranscript(transcript);
         setInput((prev) => (prev ? prev + " " : "") + transcript);
+        setVoicePhase("thinking");
+        onSend(true);
       };
       recognition.onend = () => setListening(false);
       recognition.onerror = () => setListening(false);
       setListening(true);
+      setVoiceOpen(true);
+      setVoicePhase("listening");
       recognition.start();
     } catch (e) {
       setListening(false);
@@ -89,12 +101,17 @@ export const ChatApp: React.FC = () => {
     }
   };
 
-  const speak = (text: string) => {
-    if (!ttsEnabled) return;
+  const speak = (
+    text: string,
+    opts?: { force?: boolean; onStart?: () => void; onEnd?: () => void }
+  ) => {
+    if (!ttsEnabled && !opts?.force) return;
     try {
       const utter = new SpeechSynthesisUtterance(text);
       utter.rate = 1;
       utter.pitch = 1;
+      utter.onstart = () => opts?.onStart?.();
+      utter.onend = () => opts?.onEnd?.();
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(utter);
     } catch {
@@ -102,7 +119,7 @@ export const ChatApp: React.FC = () => {
     }
   };
 
-  const onSend = async () => {
+  const onSend = async (voiceMode?: boolean) => {
     const content = input.trim();
     if (!content) return;
     if (!apiKey) {
@@ -126,7 +143,25 @@ export const ChatApp: React.FC = () => {
       const aiMsg: ChatMessage = { id: crypto.randomUUID(), role: "assistant", text: reply };
       const updated = [...next, aiMsg].slice(-40); // keep recent 20 exchanges
       setMessages(updated);
-      speak(reply);
+
+      if (voiceMode) {
+        setHiddenIds((prev) => {
+          const s = new Set(prev);
+          s.add(aiMsg.id);
+          return s;
+        });
+        setVoicePhase("speaking");
+        speak(reply, {
+          force: true,
+          onStart: () => setVoicePhase("speaking"),
+          onEnd: () => {
+            setVoicePhase("done");
+            setTimeout(() => setVoiceOpen(false), 500);
+          },
+        });
+      } else {
+        speak(reply);
+      }
     } catch (e: any) {
       toast({ title: "Error", description: e?.message || "Failed to fetch reply" });
     } finally {
@@ -211,7 +246,7 @@ export const ChatApp: React.FC = () => {
               {messages.length === 0 && (
                 <div className="text-center text-muted-foreground py-10">Start chatting or upload a document to ask questions about it.</div>
               )}
-              {messages.map((m) => (
+              {messages.filter((m) => !hiddenIds.has(m.id)).map((m) => (
                 <MessageBubble key={m.id} role={m.role} text={m.text} />
               ))}
               {loading && (
@@ -230,7 +265,7 @@ export const ChatApp: React.FC = () => {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
                 />
-                <Button onClick={onSend} disabled={loading}>
+                <Button onClick={() => onSend()} disabled={loading}>
                   <Send />
                 </Button>
                 <Button
@@ -283,6 +318,16 @@ export const ChatApp: React.FC = () => {
           </CardContent>
         </Card>
       </main>
+
+      <VoiceModal
+        open={voiceOpen}
+        phase={voicePhase}
+        transcript={voiceTranscript}
+        onClose={() => {
+          try { (window as any).speechSynthesis?.cancel?.(); } catch {}
+          setVoiceOpen(false);
+        }}
+      />
 
       <footer className="container py-6 text-center text-sm text-muted-foreground">
         Built with Gemini, Web Speech API, and localStorage. Documents never leave your browser.
